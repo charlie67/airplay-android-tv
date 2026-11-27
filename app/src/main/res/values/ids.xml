@@ -5,5 +5,6 @@
     <item name="row_background" type="id" />
     <item name="row_boot" type="id" />
     <item name="row_overlay" type="id" />
+    <item name="row_licenses" type="id" />
     <item name="row_about" type="id" />
 </resources>
