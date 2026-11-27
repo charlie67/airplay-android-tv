@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="row_name" type="id" />
+    <item name="row_resolution" type="id" />
+    <item name="row_background" type="id" />
+    <item name="row_boot" type="id" />
+    <item name="row_overlay" type="id" />
+    <item name="row_about" type="id" />
+</resources>
