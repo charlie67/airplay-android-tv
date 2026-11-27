@@ -1,25 +1,89 @@
 name: Release
 
-# Push a tag like v1.2.0 (or v1.2.0-beta.1 for a pre-release) to build and
-# publish the release APKs.
+# Tag builds: push a tag like v1.2.0 to build the release APKs. They are
+# uploaded as workflow artifacts. No GitHub release is created here.
+#
+# Releases: when you create (or publish) a release for a tag on GitHub, the
+# APKs from that tag's build are attached to it. If the release already exists
+# when the tag build finishes, the build attaches them itself.
 on:
   push:
     tags: ["v*"]
+  release:
+    types: [created, published]
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event.release.tag_name || github.ref_name }}
   cancel-in-progress: false
 
 permissions:
   contents: write
+  actions: read
+
+env:
+  TAG: ${{ github.event.release.tag_name || github.ref_name }}
 
 jobs:
-  release:
-    name: Build and publish release APKs
+  # Release events only: find the tag's build so its APKs can be reused.
+  find-build:
+    name: Find tag build
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.find.outputs.mode }}
+      run-id: ${{ steps.find.outputs.run-id }}
+    steps:
+      - name: Look up the tag build
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          runs="repos/${{ github.repository }}/actions/workflows/release.yml/runs?event=push&branch=$TAG&per_page=20"
+          success=$(gh api "$runs" --jq '[.workflow_runs[] | select(.conclusion == "success")][0].id // empty')
+          active=$(gh api "$runs" --jq '[.workflow_runs[] | select(.status != "completed")][0].id // empty')
+          if [ -n "$success" ]; then
+            echo "Using APKs from tag build run $success."
+            { echo "mode=download"; echo "run-id=$success"; } >> "$GITHUB_OUTPUT"
+          elif [ -n "$active" ]; then
+            echo "::notice::The build for $TAG (run $active) is still running; it will attach the APKs to this release when it finishes."
+            echo "mode=wait" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No successful build found for $TAG; building it now."
+            echo "mode=build" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Release events only: attach the APKs from the tag build.
+  attach:
+    name: Attach APKs to release
+    needs: find-build
+    if: needs.find-build.outputs.mode == 'download'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-apks-${{ env.TAG }}
+          path: dist
+          run-id: ${{ needs.find-build.outputs.run-id }}
+          github-token: ${{ github.token }}
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" dist/* --clobber --repo "${{ github.repository }}"
+
+  build:
+    name: Build release APKs
+    needs: find-build
+    # Runs for tag pushes, and for releases whose tag was never built.
+    if: >-
+      !cancelled() &&
+      (github.event_name == 'push' || needs.find-build.outputs.mode == 'build')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ env.TAG }}
 
       - uses: actions/setup-java@v6
         with:
@@ -42,14 +106,10 @@ jobs:
       - name: Work out version from tag
         id: version
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          prerelease=false
-          if [[ "$version" == *-* ]]; then prerelease=true; fi
           {
-            echo "name=$version"
-            # Monotonic per-release build number, so newer releases install over older ones.
+            echo "name=${TAG#v}"
+            # Monotonic build number, so newer releases install over older ones.
             echo "code=${{ github.run_number }}"
-            echo "prerelease=$prerelease"
           } >> "$GITHUB_OUTPUT"
 
       - name: Set up signing key
@@ -87,17 +147,21 @@ jobs:
           (cd dist && sha256sum -- *.apk > SHA256SUMS.txt)
           ls -l dist
 
-      - name: Publish GitHub release
+      - name: Upload APKs as workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-apks-${{ env.TAG }}
+          path: dist/
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Attach to release if it exists
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          notes="Install on Android TV with \`adb install AirPlayServerTV-${{ steps.version.outputs.name }}-universal.apk\`, or pick the APK for your TV's CPU (most TVs are armeabi-v7a)."
-          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+            echo "Attached APKs to release $TAG."
           else
-            flags=()
-            if [ "${{ steps.version.outputs.prerelease }}" = "true" ]; then flags+=(--prerelease); fi
-            gh release create "$GITHUB_REF_NAME" dist/* \
-              --title "AirPlay Server TV ${{ steps.version.outputs.name }}" \
-              --notes "$notes" --generate-notes "${flags[@]}"
+            echo "::notice::No release for $TAG yet. The APKs are in this run's artifacts and will be attached when you create the release."
           fi
