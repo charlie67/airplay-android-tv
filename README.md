@@ -38,30 +38,6 @@ and audio from iPhone, iPad and Mac**.
 | Start when the TV turns on | Starts the receiver at boot (turns on background mode). |
 | Open automatically when a device connects | In background mode, Android needs the *Display over other apps* permission to bring up the mirroring screen. Many TVs hide this setting; grant it with `adb shell appops set com.airplayserver.tv SYSTEM_ALERT_WINDOW allow`. |
 
-## How it maps to the Windows version
-
-| Windows | Android TV |
-|---------|------------|
-| `AirPlayServerLib` (RAOP, pairing, FairPlay, mirroring) | Same C sources in `app/src/main/cpp/airplay`, built with the NDK |
-| Bonjour for Windows (`dnssd.c`) | `NsdManager` (`NsdAdvertiser.kt`), same TXT records |
-| FFmpeg H.264 decode + SDL2 rendering | Hardware `MediaCodec` rendering straight to a `SurfaceView` (`VideoDecoder.kt`) |
-| FFmpeg AAC-ELD decode | Platform AAC decoder through the NDK `AMediaCodec` API (`aac_decoder.c`) |
-| SDL audio | `AudioTrack` on its own thread with a bounded backlog (`AudioPlayer.kt`) |
-| `FgAirplayServer.cpp` | `airplay_jni.c` |
-| WPF windows and settings | `MainActivity`, `SettingsActivity`, `AirPlayService` (foreground service) |
-
-Android hides the real MAC address, so the app generates a random, persistent
-device ID. It also persists the pairing key seed, so senders keep recognising
-the TV across restarts.
-
-## Differences from the Windows version
-
-- **No PIN pairing.** The receiver never requires a PIN (the Windows PIN code
-  used Windows-only crypto APIs and is stubbed out in `pinpair_stub.c`).
-- No OBS clean feed, picture-in-picture, zoom/pan or rotation controls.
-- As on Windows, URL/HLS playback ("cast a video") is not supported; media apps
-  play inside the mirrored screen.
-
 ## Build
 
 Requirements: JDK 17+, Android SDK (platform 36), NDK `29.0.14206865`, CMake `3.31.6`.
