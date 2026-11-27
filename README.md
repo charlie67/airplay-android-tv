@@ -52,6 +52,44 @@ your own signing config before distributing it.
 
 APKs include `armeabi-v7a` (most TVs), `arm64-v8a`, `x86` and `x86_64`.
 
+## CI and releases
+
+- **CI** (`.github/workflows/ci.yml`) runs on every push and pull request. It
+  builds debug and release APKs, runs the JVM unit tests (`./gradlew testDebugUnitTest`),
+  and runs the MediaCodec decoder tests on an Android emulator. APKs are attached
+  to each run as artifacts.
+- **Release** (`.github/workflows/release.yml`) runs when you push a tag starting
+  with `v`:
+  ```bash
+  git tag v1.1.0
+  git push origin v1.1.0
+  ```
+  It builds a universal APK plus one per CPU architecture, sets the app version
+  from the tag, and publishes them with SHA-256 checksums as a GitHub release.
+  Tags containing `-` (for example `v1.2.0-beta.1`) become pre-releases.
+
+### Release signing
+
+Android only installs an update over an existing install if both are signed
+with the same key. Create a key once and store it as repository secrets
+(**Settings → Secrets and variables → Actions**):
+
+```bash
+keytool -genkeypair -v -keystore release.jks -alias airplay -keyalg RSA -keysize 4096 -validity 10000
+base64 -i release.jks | pbcopy   # paste as RELEASE_KEYSTORE_BASE64
+```
+
+| Secret | Value |
+|--------|-------|
+| `RELEASE_KEYSTORE_BASE64` | The base64-encoded `release.jks` |
+| `RELEASE_KEYSTORE_PASSWORD` | Keystore password |
+| `RELEASE_KEY_ALIAS` | `airplay` (or the alias you chose) |
+| `RELEASE_KEY_PASSWORD` | Key password |
+
+Keep `release.jks` safe and out of the repository. Without these secrets the
+release still builds, but each release is signed with a throwaway key and will
+not install over a previous one.
+
 ## Debugging
 
 ```bash
