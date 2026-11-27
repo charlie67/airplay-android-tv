@@ -2,6 +2,15 @@ plugins {
     id("com.android.application")
 }
 
+// CI overrides: -PversionName=1.2.3 -PversionCode=42 -PsplitApks=true
+val appVersionName = providers.gradleProperty("versionName").getOrElse("1.0.0")
+val appVersionCode = providers.gradleProperty("versionCode").getOrElse("1").toInt()
+val splitApks = providers.gradleProperty("splitApks").getOrElse("false").toBoolean()
+
+// Release signing from the environment (see .github/workflows/release.yml).
+// Without it, release builds fall back to the debug key so they can still be sideloaded.
+val releaseKeystore = System.getenv("RELEASE_KEYSTORE_PATH")?.let { file(it) }?.takeIf { it.exists() }
+
 android {
     namespace = "com.airplayserver.tv"
     compileSdk = 36
@@ -11,13 +20,15 @@ android {
         applicationId = "com.airplayserver.tv"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        ndk {
-            // Most Android TV devices are 32-bit ARM; include everything.
-            abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+        if (!splitApks) {
+            ndk {
+                // Most Android TV devices are 32-bit ARM; include everything.
+                abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            }
         }
         externalNativeBuild {
             cmake {
@@ -26,12 +37,32 @@ android {
         }
     }
 
+    if (splitApks) {
+        splits {
+            abi {
+                isEnable = true
+                reset()
+                include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+                isUniversalApk = true
+            }
+        }
+    }
+
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("RELEASE_KEY_ALIAS")
+                keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Signed with the debug key so the release APK can be sideloaded
-            // directly. Replace with your own signing config for distribution.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 
@@ -55,6 +86,7 @@ android {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("junit:junit:4.13.2")
