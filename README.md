@@ -58,15 +58,21 @@ APKs include `armeabi-v7a` (most TVs), `arm64-v8a`, `x86` and `x86_64`.
   builds debug and release APKs, runs the JVM unit tests (`./gradlew testDebugUnitTest`),
   and runs the MediaCodec decoder tests on an Android emulator. APKs are attached
   to each run as artifacts.
-- **Release** (`.github/workflows/release.yml`) runs when you push a tag starting
-  with `v`:
-  ```bash
-  git tag v1.1.0
-  git push origin v1.1.0
-  ```
-  It builds a universal APK plus one per CPU architecture, sets the app version
-  from the tag, and publishes them with SHA-256 checksums as a GitHub release.
-  Tags containing `-` (for example `v1.2.0-beta.1`) become pre-releases.
+- **Release** (`.github/workflows/release.yml`):
+  1. Push a tag starting with `v`:
+     ```bash
+     git tag v1.1.0
+     git push origin v1.1.0
+     ```
+     This builds a universal APK plus one per CPU architecture (with SHA-256
+     checksums), sets the app version from the tag, and uploads them as the
+     `release-apks-v1.1.0` artifact on the workflow run (kept for 90 days). It
+     does not create a GitHub release.
+  2. Create a release for the tag on GitHub (**Releases → Draft a new release**).
+     The APKs from the tag build are attached automatically. If you create the
+     release while the build is still running, they are attached when it
+     finishes. If the tag was never built (for example, you created the tag
+     from the release page), the release triggers the build.
 
 ### Release signing
 

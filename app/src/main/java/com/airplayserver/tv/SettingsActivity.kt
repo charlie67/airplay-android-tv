@@ -55,6 +55,8 @@ class SettingsActivity : Activity() {
         addRow(R.id.row_overlay, getString(R.string.setting_auto_open),
             getString(if (canOpenFromBackground()) R.string.allowed else R.string.not_allowed),
             getString(R.string.setting_auto_open_summary)) { requestOverlayPermission() }
+        addRow(R.id.row_licenses, getString(R.string.setting_licenses),
+            getString(R.string.licenses_value)) { showLicense() }
         addRow(R.id.row_about, getString(R.string.setting_about),
             getString(R.string.version_label, versionName())) { showAbout() }
 
@@ -157,6 +159,14 @@ class SettingsActivity : Activity() {
         }
     }
 
+    /** Shows the upstream AirPlayServer MIT license bundled in assets/licenses. */
+    private fun showLicense() {
+        val text = runCatching {
+            assets.open(UPSTREAM_LICENSE).bufferedReader().use { it.readText() }
+        }.getOrElse { getString(R.string.license_missing) }
+        message(R.string.license_title, text.trim())
+    }
+
     private fun showAbout() {
         message(R.string.setting_about, getString(R.string.about_text, versionName()))
     }
@@ -172,4 +182,8 @@ class SettingsActivity : Activity() {
     private fun versionName(): String = runCatching {
         packageManager.getPackageInfo(packageName, 0).versionName
     }.getOrNull() ?: "?"
+
+    companion object {
+        private const val UPSTREAM_LICENSE = "licenses/AirPlayServer-MIT.txt"
+    }
 }
